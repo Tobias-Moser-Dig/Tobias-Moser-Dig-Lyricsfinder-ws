@@ -66,7 +66,7 @@
         const checksum = song.getElementsByTagName("LyricChecksum")[0]?.textContent;
         const lyric = await fetchLyricText(lyricId, checksum);
         const highlighted = highlightText(lyric, query);
-        const preview = extractPreviewAroundQuery(highlighted, query);
+        const preview = highlighted.split("<br>").slice(0, 5).join("<br>");
         const elementId = `lyric-${i}`;
         const coverUrl = await fetchCoverImage(title, artist);
 
@@ -90,23 +90,9 @@
     }
 
     function highlightText(text, query) {
-      const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const safeQuery = query.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
       const regex = new RegExp("(" + safeQuery + ")", "gi");
-      return text.replace(/\n/g, "<br>").replace(regex, '<span class="highlight">$1</span>');
-    }
-
-    function extractPreviewAroundQuery(text, query) {
-      const lines = text.split("<br>");
-      const lowerQuery = query.toLowerCase();
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].toLowerCase().includes(lowerQuery)) {
-          const before = lines[i - 1] || "";
-          const current = lines[i];
-          const after = lines[i + 1] || "";
-          return [before, current, after].join("<br>");
-        }
-      }
-      return lines.slice(0, 3).join("<br>");
+      return text.replace(/\\n/g, "<br>").replace(regex, '<span class="highlight">$1</span>');
     }
 
     function toggleLyrics(id, btn, reverse = false) {
