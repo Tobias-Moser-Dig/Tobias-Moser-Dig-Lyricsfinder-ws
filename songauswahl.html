@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lyrics Finder – Songauswahl</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .lyrics-preview {
+      white-space: pre-line;
+      margin: 10px 0;
+    }
+    .toggle-button {
+      background: none;
+      border: none;
+      color: blue;
+      cursor: pointer;
+      margin-top: 5px;
+      font-size: 14px;
+    }
+    .full-lyrics {
+      display: none;
+      white-space: pre-line;
+      margin: 10px 0;
+    }
+    .result-image img {
+      width: 80px;
+      height: 80px;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+  </style>
+</head>
+<body>
+  <div id="header-placeholder"></div>
+  <div style="height: 40px;"></div>
+  <div class="results" id="results-container">
+    <h2>Suchergebnisse</h2>
+  </div>
+
+  <script>
+    fetch("header.html").then(r => r.text()).then(t => {
+      document.getElementById("header-placeholder").innerHTML = t;
+    });
+
+    async function fetchLyrics(query) {
+      const proxyUrl = 'https://api.allorigins.win/get?url=';
+      const apiUrl = encodeURIComponent(`http://api.chartlyrics.com/apiv1.asmx/SearchLyricText?lyricText=${query}`);
+      const response = await fetch(proxyUrl + apiUrl);
+      const data = await response.json();
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(data.contents, "text/xml");
+      const results = xmlDoc.getElementsByTagName("SearchLyricResult");
+      const resultsContainer = document.getElementById('results-container');
+
+      if (results.length === 0) {
+        resultsContainer.innerHTML += "<p>Keine Ergebnisse gefunden.</p>";
+        return;
+      }
+
+      for (let i = 0; i < results.length; i++) {
+        const song = results[i];
+        const artist = song.getElementsByTagName("Artist")[0]?.textContent || "Unbekannt";
+        const title = song.getElementsByTagName("Song")[0]?.textContent || "Kein Titel";
+        const lyricId = song.getElementsByTagName("LyricId")[0]?.textContent;
+        const checksum = song.getElementsByTagName("LyricChecksum")[0]?.textContent;
+        const lyric = await fetchLyricText(lyricId, checksum);
+        const highlighted = highlightText(lyric, query);
+        const preview = extractPreviewAroundQuery(highlighted, query);
+        const elementId = `lyric-${i}`;
+        const coverUrl = await fetchCoverImage(title, artist);
+
+        resultsContainer.innerHTML += `
+          <div class="result-entry">
+            <div class="result-info">
+              <div class="song-title">${title}</div>
+              <div class="song-artist">Von: ${artist}</div>
+              <a href="https://open.spotify.com/search/${encodeURIComponent(title + ' ' + artist)}" class="spotify-link" target="_blank">Der Song auf Spotify</a>
+              <div class="lyrics-preview">${preview}</div>
+              <button class="toggle-button" onclick="toggleLyrics('${elementId}', this)">▼ Ganzen Text anzeigen</button>
+              <div class="full-lyrics" id="${elementId}">
+                ${highlighted}
+                <br><button class="toggle-button" onclick="toggleLyrics('${elementId}', this, true)">▲ Weniger anzeigen</button>
+              </div>
+            </div>
+            <div class="result-image"><img src="${coverUrl}" alt="Cover"></div>
+          </div>
+        `;
+      }
+    }
+
+    function highlightText(text, query) {
+      const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp("(" + safeQuery + ")", "gi");
+      return text.replace(/\n/g, "<br>").replace(regex, '<span class="highlight">$1</span>');
+    }
+
+    function extractPreviewAroundQuery(text, query) {
+      const lines = text.split("<br>");
+      const lowerQuery = query.toLowerCase();
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].toLowerCase().includes(lowerQuery)) {
+          const before = lines[i - 1] || "";
+          const current = lines[i];
+          const after = lines[i + 1] || "";
+          return [before, current, after].join("<br>");
+        }
+      }
+      return lines.slice(0, 3).join("<br>");
+    }
+
+    function toggleLyrics(id, btn, reverse = false) {
+      const lyricsBlock = document.getElementById(id);
+      if (reverse) {
+        lyricsBlock.style.display = "none";
+        lyricsBlock.previousElementSibling.style.display = "inline";
+      } else {
+        lyricsBlock.style.display = "block";
+        btn.style.display = "none";
+      }
+    }
+
+    async function fetchLyricText(id, checksum) {
+      const proxyUrl = 'https://api.allorigins.win/get?url=';
+      const url = encodeURIComponent(`http://api.chartlyrics.com/apiv1.asmx/GetLyric?lyricId=${id}&lyricCheckSum=${checksum}`);
+      const response = await fetch(proxyUrl + url);
+      const data = await response.json();
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(data.contents, "text/xml");
+      const lyrics = xmlDoc.getElementsByTagName("Lyric")[0]?.textContent;
+      return lyrics || "Keine Lyrics gefunden.";
+    }
+
+    async function fetchCoverImage(title, artist) {
+      try {
+        const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(artist + " " + title)}&entity=song&limit=1`;
+        const response = await fetch(itunesUrl);
+        const json = await response.json();
+        return json.results[0]?.artworkUrl100?.replace("100x100bb", "200x200bb") || "https://via.placeholder.com/80";
+      } catch {
+        return "https://via.placeholder.com/80";
+      }
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const query = urlParams.get("query");
+    if (query) {
+      fetchLyrics(query);
+    }
+  </script>
+</body>
+</html>
